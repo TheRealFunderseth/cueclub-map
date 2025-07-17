@@ -225,7 +225,7 @@ export default function HomePage() {
         </div>
 
         {/* Row 2: filters & list toggle */}
-        <div className="mt-3 flex flex-wrap items-center gap-4">
+        <div className={`mt-3 ${mobileOpen ? 'block' : 'hidden'} md:flex flex-wrap items-center gap-4`}>
           <select
             value={tableFilter}
             onChange={e => setTableFilter(e.target.value)}
