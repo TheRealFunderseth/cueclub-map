@@ -146,23 +146,34 @@ export default function HomePage() {
           .addTo(map);
 
         el.addEventListener('click', () => {
-          const zoom = map.getZoom();
-          const offset = 100 / Math.pow(2, zoom - 12);
-          const pt = map.project([bar.long, bar.lat]);
+          // 1) Figure out where you are and where you want to go
+          const currentZoom = map.getZoom();
+          const targetZoom  = Math.max(currentZoom, 13);       // ↪ if you’re below 13, bump you up; otherwise keep your zoom
+          const offset      = 100 / Math.pow(2, targetZoom - 12);
+          const pt          = map.project([bar.long, bar.lat]);
           pt.y -= offset;
+
+          // 2) Fly there
           map.easeTo({
             center: map.unproject(pt),
-            zoom: 13,
+            zoom:   targetZoom,
             duration: 400
           });
 
-          let root: any = (popupNode as any)._reactRoot;
+          // 3) Show the popup
+          let root = (popupNode as any)._reactRoot;
           if (!root) {
             root = createRoot(popupNode);
             (popupNode as any)._reactRoot = root;
           }
-          root.render(<PopupContent bar={bar} votes={votes[bar.name] || 0}
-            onVote={() => voteBar(bar.name)} onClose={() => popup.remove()} />);
+          root.render(
+            <PopupContent
+              bar={bar}
+              votes={votes[bar.name] || 0}
+              onVote={() => voteBar(bar.name)}
+              onClose={() => popup.remove()}
+            />
+          );
         });
       });
   }, [
