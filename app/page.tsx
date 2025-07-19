@@ -4,13 +4,9 @@ import React, { useEffect, useRef, useState, useMemo } from 'react'
 import { createRoot, Root } from 'react-dom/client';
 import { MapPin, Table2, Beer, ExternalLink, ThumbsUp, X, List, Menu } from 'lucide-react'
 
-// --- Type Augmentation for Global Libraries ---
-declare global {
-  interface Window {
-    mapboxgl: any;
-    supabase: any;
-  }
-}
+// Import libraries directly from NPM packages
+import mapboxgl from 'mapbox-gl';
+import { createClient } from '@supabase/supabase-js';
 
 // --- Type Definitions ---
 interface Bar {
@@ -271,35 +267,9 @@ export default function HomePage() {
 
   // --- ROBUST INITIALIZATION EFFECT ---
   useEffect(() => {
-    if (window.innerWidth < 768) {
-        setShowList(false);
-    }
-    
-    const waitForLibraries = (timeout = 10000): Promise<void> => {
-      return new Promise((resolve, reject) => {
-        const interval = setInterval(() => {
-          if (window.supabase && window.mapboxgl) {
-            clearInterval(interval);
-            clearTimeout(timer);
-            resolve();
-          }
-        }, 100);
-
-        const timer = setTimeout(() => {
-          clearInterval(interval);
-          const missing: string[] = [];
-          if (!window.supabase) missing.push('Supabase');
-          if (!window.mapboxgl) missing.push('Mapbox GL JS');
-          reject(new Error(`Loading timed out. The following libraries failed to load: ${missing.join(', ')}.`));
-        }, timeout);
-      });
-    };
-
     const initializeApp = async () => {
       try {
-        await waitForLibraries();
-
-        const supabaseClient = window.supabase.createClient(
+        const supabaseClient = createClient(
           process.env.NEXT_PUBLIC_SUPABASE_URL!,
           process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
         );
@@ -317,8 +287,8 @@ export default function HomePage() {
         setVotes(voteCounts);
 
         if (mapContainerRef.current) {
-          window.mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
-          const map = new window.mapboxgl.Map({
+          mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN!;
+          const map = new mapboxgl.Map({
             container: mapContainerRef.current,
             style: 'mapbox://styles/mapbox/streets-v11',
             center: [-122.431297, 37.773972],
@@ -326,13 +296,13 @@ export default function HomePage() {
           });
           mapRef.current = map;
 
-          popupRef.current = new window.mapboxgl.Popup({ 
+          popupRef.current = new mapboxgl.Popup({ 
             closeButton: false, 
             offset: 30,
             anchor: 'bottom' 
           });
 
-          map.addControl(new window.mapboxgl.GeolocateControl({
+          map.addControl(new mapboxgl.GeolocateControl({
             positionOptions: { enableHighAccuracy: true },
             trackUserLocation: true,
             showUserHeading: true
@@ -359,6 +329,9 @@ export default function HomePage() {
 
   // --- Layout Effect for Header Height ---
   useEffect(() => {
+    if (window.innerWidth < 768) {
+        setShowList(false);
+    }
     const updateHeaderHeight = () => {
         if (headerRef.current) {
             setHeaderHeight(headerRef.current.offsetHeight);
@@ -446,7 +419,7 @@ export default function HomePage() {
     
     const isMobile = window.innerWidth < 768;
     const flyToPadding = {
-        top: isMobile ? headerHeight + 20 : 0, // Add padding on mobile to account for the header
+        top: isMobile ? headerHeight + 20 : 0,
         bottom: 0,
         left: 0,
         right: !isMobile && showList ? 320 : 0
@@ -501,7 +474,7 @@ export default function HomePage() {
         handleMarkerClick(bar);
       });
 
-      const marker = new window.mapboxgl.Marker(el)
+      const marker = new mapboxgl.Marker(el)
         .setLngLat([bar.long, bar.lat])
         .addTo(map);
       

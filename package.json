@@ -10,7 +10,10 @@
   },
   "dependencies": {
     "@headlessui/react": "^2.2.4",
+    "@supabase/supabase-js": "^2.52.0",
+    "@types/mapbox-gl": "^3.4.1",
     "lucide-react": "latest",
+    "mapbox-gl": "^3.13.0",
     "next": "14.2.3",
     "react": "^18",
     "react-dom": "^18"
