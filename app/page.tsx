@@ -269,6 +269,11 @@ export default function HomePage() {
   useEffect(() => {
     const initializeApp = async () => {
       try {
+        // Diagnostic Log: Check if the environment variables are available.
+        console.log(`[DIAGNOSTIC] Supabase URL: ${process.env.NEXT_PUBLIC_SUPABASE_URL}`);
+        console.log(`[DIAGNOSTIC] Supabase Key (first 5 chars): ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.substring(0, 5)}`);
+        console.log(`[DIAGNOSTIC] Mapbox Token (first 5 chars): ${process.env.NEXT_PUBLIC_MAPBOX_TOKEN?.substring(0, 5)}`);
+
         const supabaseClient = createClient(
           process.env.NEXT_PUBLIC_SUPABASE_URL!,
           process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
