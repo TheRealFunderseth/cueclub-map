@@ -265,13 +265,13 @@ export default function HomePage() {
     });
   }, [bars, filter, tableFilter, guinnessFilter, showFreePoolTonightOnly, liveTableOnly, today]);
 
-  // --- Data Fetching and Initialization Effect ---
+  // --- Initialization Effect ---
   useEffect(() => {
     if (window.innerWidth < 768) {
         setShowList(false);
     }
     
-    const initializeData = async () => {
+    const initializeApp = async () => {
       try {
         const supabaseClient = createClient(
           process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -298,12 +298,11 @@ export default function HomePage() {
       }
     };
 
-    initializeData();
+    initializeApp();
   }, []);
 
   // --- Map Initialization Effect ---
   useEffect(() => {
-    // This effect now runs only after data has loaded and the container is ready.
     if (isLoading || initializationError || !mapContainerRef.current || mapRef.current) {
         return;
     }
@@ -426,16 +425,17 @@ export default function HomePage() {
     
     const isMobile = window.innerWidth < 768;
     const flyToPadding = {
-        top: isMobile ? headerHeight + 20 : 0,
+        top: headerHeight + 20, // Apply padding on all screen sizes to account for the header
         bottom: 0,
         left: 0,
-        right: !isMobile && showList ? 320 : 0
+        right: !isMobile && showList ? 320 : 0 // Only apply right padding on larger screens when list is shown
     };
 
     map.flyTo({
         center: [bar.long, bar.lat],
         zoom: targetZoom,
-        duration: 1200,
+        speed: 0.8, // Use speed for a smoother animation across different distances
+        easing: (t: number) => t * (2 - t), // Add an ease-out effect
         padding: flyToPadding
     });
   };
