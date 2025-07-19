@@ -1,26 +1,18 @@
 'use client'
 
 import React, { useEffect, useRef, useState, useMemo } from 'react'
-import mapboxgl, { Marker, Popup } from 'mapbox-gl'
-import 'mapbox-gl/dist/mapbox-gl.css'
-import { createClient } from '@supabase/supabase-js'
-import { Root, createRoot } from 'react-dom/client'
-import Header from './components/Header'
-import { MapPin, Table2, Beer, ExternalLink, ThumbsUp, X } from 'lucide-react'
+import { createRoot, Root } from 'react-dom/client'; // Correctly import createRoot and Root type
+import { MapPin, Table2, Beer, ExternalLink, ThumbsUp, X, List, Menu } from 'lucide-react'
 
-// Ensure the Mapbox access token is set.
-if (!process.env.NEXT_PUBLIC_MAPBOX_TOKEN) {
-  throw new Error("Mapbox token is not set in environment variables.");
+// --- Type Augmentation for Global Libraries ---
+declare global {
+  interface Window {
+    mapboxgl: any;
+    supabase: any;
+  }
 }
-mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 
-// Initialize Supabase client
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-)
-
-// Define the type for a bar object for better type safety
+// --- Type Definitions ---
 interface Bar {
   id: number;
   name: string;
@@ -30,7 +22,7 @@ interface Bar {
   num_tables: number;
   guinness: boolean;
   live_table: boolean;
-  z?: string; // Website URL is optional
+  z?: string;
   free_pool_monday?: boolean;
   free_pool_tuesday?: boolean;
   free_pool_wednesday?: boolean;
@@ -38,25 +30,165 @@ interface Bar {
   free_pool_friday?: boolean;
   free_pool_saturday?: boolean;
   free_pool_sunday?: boolean;
-  [key: string]: any; // Allow for dynamic property access
+  [key: string]: any;
+}
+
+interface Vote {
+    bar_name: string;
+    count: number;
+}
+
+// --- Reusable Toggle Switch Component ---
+function ToggleSwitch({ label, checked, onChange }: { label: string, checked: boolean, onChange: (checked: boolean) => void }) {
+  return (
+    <label className="flex items-center gap-2 cursor-pointer text-sm font-medium text-gray-700">
+      <div className="relative">
+        <input type="checkbox" className="sr-only" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+        <div className={`block w-10 h-6 rounded-full transition-colors ${checked ? 'bg-blue-600' : 'bg-gray-200'}`}></div>
+        <div className={`dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${checked ? 'transform translate-x-4' : ''}`}></div>
+      </div>
+      <span>{label}</span>
+    </label>
+  );
 }
 
 
-// Popup content component
+// --- Sub-Components ---
+function Header({
+  filter, onFilterChange,
+  tableFilter, onTableFilterChange,
+  guinnessFilter, onGuinnessFilterChange,
+  freePoolTonightOnly, onFreePoolTonightToggle,
+  liveTableOnly, onLiveTableToggle,
+  setShowList,
+  children, // This will be the "Show/Hide List" button
+  headerRef
+}: {
+  filter: string, onFilterChange: (val: string) => void,
+  tableFilter: string, onTableFilterChange: (val: string) => void,
+  guinnessFilter: boolean, onGuinnessFilterChange: (val: boolean) => void,
+  freePoolTonightOnly: boolean, onFreePoolTonightToggle: (val: boolean) => void,
+  liveTableOnly: boolean, onLiveTableToggle: (val: boolean) => void,
+  mobileOpen: boolean, setMobileOpen: (val: boolean) => void,
+  setShowList: (val: boolean | ((s: boolean) => boolean)) => void,
+  children: React.ReactNode,
+  headerRef: React.RefObject<HTMLElement>
+}) {
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  return (
+    <header ref={headerRef} className="bg-white p-4 shadow-lg relative">
+      <div className="flex items-center justify-between">
+        {/* Left Side: Logo and Titles */}
+        <div className="flex items-center gap-4">
+          <img src="/cueclublogo.png" alt="Cue Club SF Logo" className="h-20 w-20" />
+          <div>
+            <h1 className="text-2xl font-bold text-gray-800 tracking-tight">Cue Club SF</h1>
+            <p className="text-sm text-gray-500">The best pool bars in San Francisco</p>
+          </div>
+        </div>
+
+        {/* Desktop Right Side: Search and List Button */}
+        <div className="hidden md:flex items-center gap-4">
+          <div className="relative">
+            <input
+              type="text"
+              id="search-bar-name-desktop"
+              name="search-bar-name-desktop"
+              placeholder="Search by name..."
+              value={filter}
+              onChange={(e) => onFilterChange(e.target.value)}
+              onFocus={() => setShowList(true)}
+              className="p-2 border rounded-md w-48 text-sm"
+            />
+            {filter && (
+              <button onClick={() => onFilterChange('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+          {children}
+        </div>
+        
+        {/* Mobile Menu Button */}
+        <div className="md:hidden">
+            <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="p-2 rounded-md hover:bg-gray-100">
+                <Menu className="w-6 h-6 text-gray-700" />
+            </button>
+        </div>
+      </div>
+
+      {/* Desktop Filters */}
+      <div className="hidden md:flex mt-4 flex-wrap items-center gap-x-6 gap-y-4">
+        <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
+          <span>No. of tables</span>
+          <select value={tableFilter} onChange={e => onTableFilterChange(e.target.value)} className="p-2 border rounded-md text-sm">
+            <option value="">Any</option>
+            <option value="1">1</option>
+            <option value="2">2</option>
+            <option value="3+">3+</option>
+          </select>
+        </div>
+        <ToggleSwitch label="Live table tonight" checked={liveTableOnly} onChange={onLiveTableToggle} />
+        <ToggleSwitch label="Guinness on draft" checked={guinnessFilter} onChange={onGuinnessFilterChange} />
+        <ToggleSwitch label="Free pool tonight" checked={freePoolTonightOnly} onChange={onFreePoolTonightToggle} />
+      </div>
+
+      {/* Mobile Collapsible Menu */}
+      {mobileMenuOpen && (
+        <div className="md:hidden mt-4 border-t pt-4">
+            <div className="flex flex-col gap-4">
+                <div className="relative">
+                    <input
+                      type="text"
+                      id="search-bar-name-mobile"
+                      name="search-bar-name-mobile"
+                      placeholder="Search by name..."
+                      value={filter}
+                      onChange={(e) => onFilterChange(e.target.value)}
+                      onFocus={() => setShowList(true)}
+                      className="p-2 border rounded-md w-full text-sm"
+                    />
+                    {filter && (
+                      <button onClick={() => onFilterChange('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                        <X className="w-4 h-4" />
+                      </button>
+                    )}
+                </div>
+                <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                  <span>No. of tables</span>
+                  <select value={tableFilter} onChange={e => onTableFilterChange(e.target.value)} className="p-2 border rounded-md text-sm">
+                    <option value="">Any</option>
+                    <option value="1">1</option>
+                    <option value="2">2</option>
+                    <option value="3+">3+</option>
+                  </select>
+                </div>
+                <ToggleSwitch label="Live table tonight" checked={liveTableOnly} onChange={onLiveTableToggle} />
+                <ToggleSwitch label="Guinness on draft" checked={guinnessFilter} onChange={onGuinnessFilterChange} />
+                <ToggleSwitch label="Free pool tonight" checked={freePoolTonightOnly} onChange={onFreePoolTonightToggle} />
+                <div className="mt-2">{children}</div>
+            </div>
+        </div>
+      )}
+    </header>
+  );
+}
+
 function PopupContent({ bar, votes, onVote, onClose }: { bar: Bar, votes: number, onVote: () => void, onClose: () => void }) {
   const freePoolDays = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday']
-    .filter(day => bar[`free_pool_${day}`])
-  const isLive = bar.live_table === true
+    .filter(day => bar[`free_pool_${day}`]);
+  const isLive = bar.live_table === true;
 
   return (
     <div className={`max-w-[260px] p-4 space-y-3 text-sm bg-white rounded-xl shadow-lg font-sans ${isLive ? 'ring-4 ring-red-500' : 'ring-1 ring-gray-300'}`}>
-        <button onClick={onClose} className="absolute top-2 right-2 text-gray-400 hover:text-gray-600">
+        <button onClick={onClose} className="absolute top-2 right-2 text-gray-400 hover:text-gray-600 z-10">
           <X className="w-4 h-4" />
         </button>
         <div className="font-semibold text-lg break-words">{isLive ? '📣' : '🎱'} {bar.name}</div>
         {isLive && (
           <div className="text-red-600 font-bold text-sm flex items-center gap-1">
-            📍 Live table tonight!
+            📍 Live table tonight @ 8:30p!
           </div>
         )}
         <div className="flex items-center gap-2 text-gray-600">
@@ -97,38 +229,40 @@ function PopupContent({ bar, votes, onVote, onClose }: { bar: Bar, votes: number
           <ThumbsUp className="w-4 h-4" /> Upvote <span className="ml-1 bg-white text-blue-600 rounded-full px-2 py-0.5 text-xs">{votes}</span>
         </button>
     </div>
-  )
+  );
 }
 
-// Main page component
+// --- Main Page Component ---
 export default function HomePage() {
-  const today = new Date().toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase()
+  const today = new Date().toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
 
-  // State
-  const [bars, setBars] = useState<Bar[]>([])
-  const [votes, setVotes] = useState<Record<string, number>>({})
-  const [filter, setFilter] = useState<string>('')
-  const [tableFilter, setTableFilter] = useState<string>('')
-  const [guinnessFilter, setGuinnessFilter] = useState<boolean>(false)
-  const [showFreePoolTonightOnly, setShowFreePoolTonightOnly] = useState<boolean>(false)
-  const [liveTableOnly, setLiveTableOnly] = useState<boolean>(false)
-  const [mobileOpen, setMobileOpen] = useState<boolean>(false)
-  const [showList, setShowList] = useState<boolean>(false)
-  const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [activeBarId, setActiveBarId] = useState<number | null>(null);
+  // --- State Management ---
+  const [isLoading, setIsLoading] = useState(true);
+  const [initializationError, setInitializationError] = useState<string | null>(null);
+  const [supabase, setSupabase] = useState<any>(null);
+  const [bars, setBars] = useState<Bar[]>([]);
+  const [votes, setVotes] = useState<Record<string, number>>({});
+  const [filter, setFilter] = useState<string>('');
+  const [tableFilter, setTableFilter] = useState<string>('');
+  const [guinnessFilter, setGuinnessFilter] = useState<boolean>(false);
+  const [showFreePoolTonightOnly, setShowFreePoolTonightOnly] = useState<boolean>(false);
+  const [liveTableOnly, setLiveTableOnly] = useState<boolean>(false);
+  const [mobileOpen, setMobileOpen] = useState<boolean>(false);
+  const [showList, setShowList] = useState<boolean>(true);
   const [barsInView, setBarsInView] = useState<Bar[]>([]);
-  const [barToSelect, setBarToSelect] = useState<Bar | null>(null);
+  const [activeBarId, setActiveBarId] = useState<number | null>(null);
+  const [headerHeight, setHeaderHeight] = useState(0);
 
-  // Refs
-  const mapRef = useRef<mapboxgl.Map | null>(null)
-  const mapContainerRef = useRef<HTMLDivElement | null>(null)
-  const markerRefs = useRef<Record<string, mapboxgl.Marker>>({})
-  const popupRootRefs = useRef<Record<string, Root>>({})
-  const activePopupRef = useRef<mapboxgl.Popup | null>(null);
-  const barsRef = useRef(bars);
-  barsRef.current = bars;
+  // --- Refs for Imperative APIs ---
+  const mapContainerRef = useRef<HTMLDivElement | null>(null);
+  const mapRef = useRef<any>(null);
+  const markersRef = useRef<Record<string, any>>({});
+  const headerRef = useRef<HTMLElement>(null);
+  const popupRef = useRef<any>(null);
+  const popupRootRef = useRef<Root | null>(null);
 
-  // Memoized filtered bars list
+
+  // --- Memoized Filtering Logic ---
   const filteredBars = useMemo(() => {
     return bars.filter(bar => {
       const nameMatch = bar.name.toLowerCase().includes(filter.toLowerCase());
@@ -140,51 +274,214 @@ export default function HomePage() {
     });
   }, [bars, filter, tableFilter, guinnessFilter, showFreePoolTonightOnly, liveTableOnly, today]);
 
-  // Fetch data from Supabase
+  // --- ROBUST INITIALIZATION EFFECT ---
   useEffect(() => {
-    setIsLoading(true);
-    Promise.all([
-      supabase.from('bars').select('*'),
-      supabase.from('votes').select('*')
-    ]).then(([{ data: barsData, error: barsError }, { data: votesData, error: votesError }]) => {
-      if (barsError) console.error('Error fetching bars:', barsError);
-      else setBars(barsData as Bar[] || []);
+    const waitForLibraries = (timeout = 10000): Promise<void> => {
+      return new Promise((resolve, reject) => {
+        const interval = setInterval(() => {
+          if (window.supabase && window.mapboxgl) {
+            clearInterval(interval);
+            clearTimeout(timer);
+            resolve();
+          }
+        }, 100);
 
-      if (votesError) console.error('Error fetching votes:', votesError);
-      else {
-        const counts: Record<string, number> = {};
-        votesData?.forEach(r => (counts[r.bar_name] = r.count));
-        setVotes(counts);
+        const timer = setTimeout(() => {
+          clearInterval(interval);
+          const missing: string[] = [];
+          if (!window.supabase) missing.push('Supabase');
+          if (!window.mapboxgl) missing.push('Mapbox GL JS');
+          reject(new Error(`Loading timed out. The following libraries failed to load: ${missing.join(', ')}.`));
+        }, timeout);
+      });
+    };
+
+    const initializeApp = async () => {
+      try {
+        await waitForLibraries();
+
+        const supabaseClient = window.supabase.createClient(
+          process.env.NEXT_PUBLIC_SUPABASE_URL!,
+          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+        );
+        setSupabase(supabaseClient);
+
+        const [{ data: barsData, error: barsError }, { data: votesData, error: votesError }] = await Promise.all([
+          supabaseClient.from('bars').select('*'),
+          supabaseClient.from('votes').select('*'),
+        ]);
+
+        if (barsError) throw barsError;
+        if (votesError) throw votesError;
+
+        setBars(barsData as Bar[] || []);
+        const voteCounts: Record<string, number> = {};
+        (votesData as Vote[])?.forEach((r: Vote) => (voteCounts[r.bar_name] = r.count));
+        setVotes(voteCounts);
+
+        if (mapContainerRef.current) {
+          window.mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
+          const map = new window.mapboxgl.Map({
+            container: mapContainerRef.current,
+            style: 'mapbox://styles/mapbox/streets-v11',
+            center: [-122.431297, 37.773972],
+            zoom: 12,
+          });
+          mapRef.current = map;
+
+          popupRef.current = new window.mapboxgl.Popup({ 
+            closeButton: false, 
+            offset: 30,
+            anchor: 'bottom' 
+          });
+
+          map.addControl(new window.mapboxgl.GeolocateControl({
+            positionOptions: { enableHighAccuracy: true },
+            trackUserLocation: true,
+            showUserHeading: true
+          }));
+        }
+
+      } catch (error: any) {
+        console.error("Failed to initialize the application:", error);
+        setInitializationError(error.message || "An unknown error occurred during startup.");
+      } finally {
+        setIsLoading(false);
       }
-      setIsLoading(false);
-    });
-  }, []);
+    };
 
-  // Initialize map and event listeners
-  useEffect(() => {
-    if (mapRef.current || !mapContainerRef.current) return;
-    const map = new mapboxgl.Map({
-      container: mapContainerRef.current,
-      style: 'mapbox://styles/mapbox/streets-v11',
-      center: [-122.431297, 37.773972],
-      zoom: 12,
-    });
-    mapRef.current = map;
+    initializeApp();
 
     return () => {
-      map.remove();
+      if (mapRef.current) {
+        mapRef.current.remove();
+        mapRef.current = null;
+      }
     };
   }, []);
 
-  // Render markers and handle popups
+  // --- Layout Effect for Header Height ---
   useEffect(() => {
-    const map = mapRef.current;
-    if (!map || isLoading) return;
+    const updateHeaderHeight = () => {
+        if (headerRef.current) {
+            setHeaderHeight(headerRef.current.offsetHeight);
+        }
+    };
+    updateHeaderHeight();
+    window.addEventListener('resize', updateHeaderHeight);
+    return () => window.removeEventListener('resize', updateHeaderHeight);
+  }, []);
 
-    Object.values(markerRefs.current).forEach(m => m.remove());
-    markerRefs.current = {};
+
+  // --- Map Viewport Update Effect ---
+  useEffect(() => {
+    if (isLoading || initializationError || !mapRef.current) return;
+
+    const map = mapRef.current;
+    const updateBarsInView = () => {
+        const bounds = map.getBounds();
+        const visibleBars = filteredBars.filter(bar => 
+            bounds.contains([bar.long, bar.lat])
+        );
+        setBarsInView(visibleBars);
+    };
+    
+    map.on('moveend', updateBarsInView);
+    if (map.isStyleLoaded()) {
+      updateBarsInView();
+    } else {
+      map.on('load', updateBarsInView);
+    }
+
+    return () => {
+        if(map.getStyle()) {
+            map.off('moveend', updateBarsInView);
+            map.off('load', updateBarsInView);
+        }
+    };
+  }, [isLoading, initializationError, filteredBars]);
+
+  // --- Event Handlers ---
+  const handleVote = async (barName: string) => {
+    if (!supabase) return;
+    if (localStorage.getItem(`voted_${barName}`)) return;
+    
+    await supabase.rpc('increment_vote', { bar: barName });
+    setVotes(v => ({ ...v, [barName]: (v[barName] || 0) + 1 }));
+    localStorage.setItem(`voted_${barName}`, 'true');
+  }
+
+  const voteBar = (barName: string) => {
+    handleVote(barName);
+  };
+
+  const showPopup = (bar: Bar) => {
+    const map = mapRef.current;
+    const popup = popupRef.current;
+    if (!map || !popup || !bar) return;
+
+    if (popupRootRef.current) {
+        popupRootRef.current.unmount();
+    }
+
+    const popupNode = document.createElement('div');
+    popupRootRef.current = createRoot(popupNode);
+
+    popupRootRef.current.render(
+        <PopupContent 
+          bar={bar} 
+          votes={votes[bar.name] || 0} 
+          onVote={() => voteBar(bar.name)} 
+          onClose={() => {
+            popup.remove();
+            setActiveBarId(null);
+          }}
+        />
+    );
+
+    popup
+        .setLngLat([bar.long, bar.lat])
+        .setDOMContent(popupNode)
+        .addTo(map);
+
+    const currentZoom = map.getZoom();
+    const targetZoom = Math.max(currentZoom, 14);
+    map.flyTo({
+        center: [bar.long, bar.lat],
+        zoom: targetZoom,
+        duration: 1200,
+        padding: { top: 0, bottom: 0, left: 0, right: showList ? 320 : 0 }
+    });
+  };
+
+  const handleMarkerClick = (bar: Bar) => {
+    if (activeBarId === bar.id) {
+      popupRef.current.remove();
+      setActiveBarId(null);
+    } else {
+      showPopup(bar);
+      setActiveBarId(bar.id);
+    }
+  };
+
+  // --- Marker Management Effect ---
+  useEffect(() => {
+    if (isLoading || initializationError || !mapRef.current) return;
+    const map = mapRef.current;
+
+    Object.keys(markersRef.current).forEach(markerId => {
+      if (!filteredBars.some(bar => bar.id === +markerId)) {
+        markersRef.current[markerId].remove();
+        delete markersRef.current[markerId];
+      }
+    });
 
     filteredBars.forEach(bar => {
+      if (markersRef.current[bar.id]) {
+        markersRef.current[bar.id].getElement().innerHTML = bar.live_table ? '📣' : '🎱';
+        return;
+      }
+      
       if (typeof bar.lat !== 'number' || typeof bar.long !== 'number') return;
       
       const el = document.createElement('div');
@@ -193,108 +490,125 @@ export default function HomePage() {
       el.style.fontSize = '24px';
       el.innerHTML = bar.live_table ? '📣' : '🎱';
 
-      const marker = new mapboxgl.Marker(el)
+      el.addEventListener('click', (e) => {
+        e.stopPropagation();
+        handleMarkerClick(bar);
+      });
+
+      const marker = new window.mapboxgl.Marker(el)
         .setLngLat([bar.long, bar.lat])
         .addTo(map);
       
-      markerRefs.current[bar.id] = marker;
-
-      el.addEventListener('click', (e) => {
-        e.stopPropagation();
-        setActiveBarId(prevId => prevId === bar.id ? null : bar.id);
-      });
+      markersRef.current[bar.id] = marker;
     });
 
-    if (activePopupRef.current) {
-        activePopupRef.current.remove();
-        activePopupRef.current = null;
+  }, [isLoading, initializationError, filteredBars]);
+
+
+  // --- Sidebar Sorting Logic ---
+  const barsToDisplay = filter ? filteredBars : barsInView;
+  const sortedBarsToDisplay = useMemo(() => {
+    if (!activeBarId) {
+        return barsToDisplay;
+    }
+    const selectedBar = barsToDisplay.find(bar => bar.id === activeBarId);
+    if (!selectedBar) {
+        return barsToDisplay;
+    }
+    const otherBars = barsToDisplay.filter(bar => bar.id !== activeBarId);
+    return [selectedBar, ...otherBars];
+  }, [barsToDisplay, activeBarId]);
+
+
+  // --- Render Logic ---
+  const renderContent = () => {
+    if (isLoading) {
+      return (
+        <div className="absolute inset-0 bg-white/80 backdrop-blur-sm flex items-center justify-center z-[100]">
+          <div className="text-gray-700 text-2xl font-semibold animate-pulse">Racking 'em up...</div>
+        </div>
+      );
     }
 
-    if (activeBarId) {
-        const activeBar = bars.find(b => b.id === activeBarId);
-        if (activeBar) {
-            const popupNode = document.createElement('div');
-            if (!popupRootRefs.current[activeBar.id]) {
-                popupRootRefs.current[activeBar.id] = createRoot(popupNode);
-            }
-
-            const popup = new mapboxgl.Popup({ closeButton: false, offset: 25 })
-                .setLngLat([activeBar.long, activeBar.lat])
-                .setDOMContent(popupNode)
-                .addTo(map);
-            
-            activePopupRef.current = popup;
-
-            popupRootRefs.current[activeBar.id].render(
-                <PopupContent bar={activeBar} votes={votes[activeBar.name] || 0} onVote={() => voteBar(activeBar.name)} onClose={() => setActiveBarId(null)} />
-            );
-
-            const currentZoom = map.getZoom();
-            const targetZoom = Math.max(currentZoom, 14);
-            map.flyTo({
-                center: [activeBar.long, activeBar.lat],
-                zoom: targetZoom,
-                duration: 1200,
-                padding: { top: 300 } 
-            });
-        }
+    if (initializationError) {
+      return (
+        <div className="absolute inset-0 bg-red-50 flex items-center justify-center z-[100] p-4">
+          <div className="text-center">
+            <h2 className="text-xl font-bold text-red-700 mb-2">Application Error</h2>
+            <p className="text-red-600">{initializationError}</p>
+            <p className="text-gray-500 mt-2">Please check that the required scripts are included in your HTML file and are not being blocked.</p>
+          </div>
+        </div>
+      );
     }
 
-  }, [filteredBars, activeBarId, isLoading]);
+    return (
+      <>
+        <div 
+          className={`fixed right-4 w-80 bg-white rounded-xl shadow-lg z-40 transform transition-transform duration-300 ${
+            showList ? 'translate-x-0' : 'translate-x-[calc(100%+1rem)]'
+          }`}
+          style={{
+              top: headerHeight ? `${headerHeight + 16}px` : '10rem', // 16px is 1rem for spacing
+              height: headerHeight ? `calc(100vh - ${headerHeight + 32}px)` : 'calc(100vh - 12rem)'
+          }}
+        >
+          <ul className="overflow-y-auto h-full p-4 space-y-4">
+            {sortedBarsToDisplay.length > 0 ? (
+              sortedBarsToDisplay.map(bar => {
+                const isSelected = activeBarId === bar.id;
+                const isLive = bar.live_table;
+                
+                // This logic ensures the red ring for live tables takes precedence when selected.
+                let ringClass = '';
+                if (isSelected) {
+                    ringClass = isLive ? 'ring-4 ring-red-500' : 'ring-4 ring-blue-500';
+                } else if (isLive) {
+                    ringClass = 'ring-2 ring-red-400';
+                }
 
-  // Update bars in view when map moves
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
-
-    const updateBarsInView = () => {
-        const bounds = map.getBounds();
-        if (bounds) {
-            const visibleBars = filteredBars.filter(bar => 
-                bounds.contains([bar.long, bar.lat])
-            );
-            setBarsInView(visibleBars);
-        }
-    };
-    
-    map.on('moveend', updateBarsInView);
-    map.on('load', updateBarsInView);
-
-    return () => {
-        map.off('moveend', updateBarsInView);
-        map.off('load', updateBarsInView);
-    };
-  }, [filteredBars]);
-
-  // Handle voting for a bar
-  const voteBar = async (barName: string) => {
-    if (localStorage.getItem(`voted_${barName}`)) {
-        console.log('Already voted for this bar.');
-        return;
-    }
-    const { error } = await supabase.rpc('increment_vote', { bar: barName });
-    if (error) {
-        console.error('Failed to vote:', error);
-        return;
-    }
-    setVotes(v => ({ ...v, [barName]: (v[barName] || 0) + 1 }));
-    localStorage.setItem(`voted_${barName}`, 'true');
-  }
+                return (
+                  <li
+                    key={bar.id}
+                    className={`bg-white border border-gray-200 rounded-lg shadow-sm p-4 hover:bg-gray-50 transition-all cursor-pointer ${ringClass}`}
+                    onClick={() => handleMarkerClick(bar)}
+                  >
+                    <div className="font-semibold">{bar.name}</div>
+                    {isLive && (
+                      <div className="text-red-600 font-bold text-xs flex items-center gap-1 mt-1">
+                        📍 Live table tonight @ 8:30p!
+                      </div>
+                    )}
+                    <div className="text-xs text-gray-500 my-2">{bar.address}</div>
+                    <div className="flex items-center text-xs text-gray-700 gap-3">
+                      <span className="flex items-center gap-1"><Table2 className="w-4 h-4" />{' '}{bar.num_tables ?? '?'} tables</span>
+                      {bar.guinness && <span className="flex items-center gap-1 text-green-700"><Beer className="w-4 h-4" /> Guinness</span>}
+                    </div>
+                  </li>
+                )
+              })
+            ) : (
+                <div className="text-center text-gray-500 p-8">
+                    <p>No bars match your current filters.</p>
+                </div>
+            )}
+          </ul>
+        </div>
+        <div ref={mapContainerRef} className="w-full h-screen" />
+      </>
+    );
+  };
 
   return (
     <>
       <style>{`
-        .mapboxgl-popup-tip {
-          display: none !important;
-        }
-        .mapboxgl-popup-content {
-          padding: 0;
-          background: transparent;
-          box-shadow: none;
-        }
+        .mapboxgl-popup-tip { display: none !important; }
+        .mapboxgl-popup-content { padding: 0; background: transparent; box-shadow: none; }
       `}</style>
+      
       <div className="relative z-50">
         <Header
+          headerRef={headerRef}
           filter={filter}
           onFilterChange={setFilter}
           tableFilter={tableFilter}
@@ -310,59 +624,22 @@ export default function HomePage() {
           setShowList={setShowList}
         >
           <button
-            className="flex-shrink-0 text-xs px-3 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 shadow"
-            onClick={() => setShowList(!showList)}
+            className="flex-shrink-0 text-sm font-medium px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 shadow-sm flex items-center gap-2"
+            onClick={() => setShowList(s => !s)}
           >
-            {showList ? 'Hide List' : 'Show List'}
+            <List className="w-4 h-4" />
+            <span>{showList ? 'Hide List' : 'Show List'}</span>
           </button>
         </Header>
       </div>
 
-      <div className={`fixed top-28 md:top-40 right-4 h-[calc(100vh-8rem)] md:h-[calc(100vh-11rem)] w-80 bg-white rounded-xl shadow-lg z-40 transform transition-transform duration-300 ${
-        showList ? 'translate-x-0' : 'translate-x-[calc(100%+1rem)]'
-      }`}>
-        <ul className="overflow-y-auto h-full p-4 space-y-4">
-          {(filter ? filteredBars : barsInView)
-            .map(bar => {
-              const isSelected = activeBarId === bar.id;
-              const isLive = bar.live_table;
-              return (
-                <li
-                  key={bar.id}
-                  className={`bg-white border border-gray-200 rounded-lg shadow-sm p-4 hover:shadow-md transition-all cursor-pointer ${isLive ? 'ring-2 ring-red-500' : ''} ${isSelected ? 'ring-4 ring-blue-500' : ''}`}
-                  onClick={() => setActiveBarId(bar.id)}
-                >
-                  <div className="font-semibold">{bar.name}</div>
-                  {/* ✅ FIX: Added "Live table tonight!" text for live bars in the sidebar */}
-                  {isLive && (
-                    <div className="text-red-600 font-bold text-xs flex items-center gap-1 mt-1">
-                      📍 Live table tonight!
-                    </div>
-                  )}
-                  <div className="text-xs text-gray-500 my-2">{bar.address}</div>
-                  <div className="flex items-center text-xs text-gray-700 gap-3">
-                    <span className="flex items-center gap-1"><Table2 className="w-4 h-4" />{' '}{bar.num_tables ?? '?'} tables</span>
-                    {bar.guinness && <span className="flex items-center gap-1 text-green-700"><Beer className="w-4 h-4" /> Guinness</span>}
-                  </div>
-                </li>
-              )
-            })}
-        </ul>
-      </div>
-
-      {isLoading && (
-        <div className="absolute inset-0 bg-white flex items-center justify-center z-[100]">
-          <div className="text-gray-700 text-2xl font-semibold animate-pulse">Racking 'em up...</div>
-        </div>
-      )}
-
-      <div ref={mapContainerRef} className="w-full h-screen" />
+      {renderContent()}
 
       <a
         href="https://forms.gle/RgaPjc3eYhankmUg8"
         target="_blank"
         rel="noopener noreferrer"
-        className="fixed bottom-4 left-4 z-50 inline-flex items-center px-4 py-2 border border-transparent text-sm font-bold rounded-md shadow-sm text-white bg-orange-500 hover:bg-orange-600"
+        className="fixed bottom-6 md:bottom-4 left-4 z-50 inline-flex items-center px-4 py-2 border border-transparent text-sm font-bold rounded-md shadow-sm text-white bg-orange-700 hover:bg-orange-800"
       >
         + Register Bar
       </a>
