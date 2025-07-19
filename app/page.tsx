@@ -269,11 +269,6 @@ export default function HomePage() {
   useEffect(() => {
     const initializeApp = async () => {
       try {
-        // Diagnostic Log: Check if the environment variables are available.
-        console.log(`[DIAGNOSTIC] Supabase URL: ${process.env.NEXT_PUBLIC_SUPABASE_URL}`);
-        console.log(`[DIAGNOSTIC] Supabase Key (first 5 chars): ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.substring(0, 5)}`);
-        console.log(`[DIAGNOSTIC] Mapbox Token (first 5 chars): ${process.env.NEXT_PUBLIC_MAPBOX_TOKEN?.substring(0, 5)}`);
-
         const supabaseClient = createClient(
           process.env.NEXT_PUBLIC_SUPABASE_URL!,
           process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -281,10 +276,10 @@ export default function HomePage() {
         setSupabase(supabaseClient);
 
         const barsResponse = await supabaseClient.from('bars').select('*');
-        if (barsResponse.error) throw barsResponse.error;
+        if (barsResponse.error) throw new Error(`Supabase error fetching bars: ${barsResponse.error.message}`);
         
         const votesResponse = await supabaseClient.from('votes').select('*');
-        if (votesResponse.error) throw votesResponse.error;
+        if (votesResponse.error) throw new Error(`Supabase error fetching votes: ${votesResponse.error.message}`);
 
         setBars(barsResponse.data as Bar[] || []);
         const voteCounts: Record<string, number> = {};
