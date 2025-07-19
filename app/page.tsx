@@ -77,7 +77,7 @@ function Header({
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   return (
-    <header ref={headerRef} className="bg-white p-4 shadow-lg relative">
+    <header ref={headerRef} className="bg-white p-4 shadow-lg relative z-50">
       <div className="flex items-center justify-between">
         {/* Left Side: Logo and Titles */}
         <div className="flex items-center gap-4">
@@ -188,7 +188,7 @@ function PopupContent({ bar, votes, onVote, onClose }: { bar: Bar, votes: number
         <div className="font-semibold text-lg break-words">{isLive ? '📣' : '🎱'} {bar.name}</div>
         {isLive && (
           <div className="text-red-600 font-bold text-sm flex items-center gap-1">
-            📍 Live table tonight @ 8:30p!
+            📍 Live table tonight!
           </div>
         )}
         <div className="flex items-center gap-2 text-gray-600">
@@ -306,17 +306,16 @@ export default function HomePage() {
         );
         setSupabase(supabaseClient);
 
-        const [{ data: barsData, error: barsError }, { data: votesData, error: votesError }] = await Promise.all([
-          supabaseClient.from('bars').select('*'),
-          supabaseClient.from('votes').select('*'),
-        ]);
+        // Definitive fix: Await each query individually and throw if there's an error.
+        const barsResponse = await supabaseClient.from('bars').select('*');
+        if (barsResponse.error) throw barsResponse.error;
+        
+        const votesResponse = await supabaseClient.from('votes').select('*');
+        if (votesResponse.error) throw votesResponse.error;
 
-        if (barsError) throw barsError;
-        if (votesError) throw votesError;
-
-        setBars(barsData as Bar[] || []);
+        setBars(barsResponse.data as Bar[] || []);
         const voteCounts: Record<string, number> = {};
-        (votesData as Vote[])?.forEach((r: Vote) => (voteCounts[r.bar_name] = r.count));
+        (votesResponse.data as Vote[])?.forEach((r: Vote) => (voteCounts[r.bar_name] = r.count));
         setVotes(voteCounts);
 
         if (mapContainerRef.current) {
@@ -521,92 +520,13 @@ export default function HomePage() {
 
 
   // --- Render Logic ---
-  const renderContent = () => {
-    if (isLoading) {
-      return (
-        <div className="absolute inset-0 bg-white/80 backdrop-blur-sm flex items-center justify-center z-[100]">
-          <div className="text-gray-700 text-2xl font-semibold animate-pulse">Racking 'em up...</div>
-        </div>
-      );
-    }
-
-    if (initializationError) {
-      return (
-        <div className="absolute inset-0 bg-red-50 flex items-center justify-center z-[100] p-4">
-          <div className="text-center">
-            <h2 className="text-xl font-bold text-red-700 mb-2">Application Error</h2>
-            <p className="text-red-600">{initializationError}</p>
-            <p className="text-gray-500 mt-2">Please check that the required scripts are included in your HTML file and are not being blocked.</p>
-          </div>
-        </div>
-      );
-    }
-
-    return (
-      <>
-        <div 
-          className={`fixed right-4 w-80 bg-white rounded-xl shadow-lg z-40 transform transition-transform duration-300 ${
-            showList ? 'translate-x-0' : 'translate-x-[calc(100%+1rem)]'
-          }`}
-          style={{
-              top: headerHeight ? `${headerHeight + 16}px` : '10rem', // 16px is 1rem for spacing
-              height: headerHeight ? `calc(100vh - ${headerHeight + 32}px)` : 'calc(100vh - 12rem)'
-          }}
-        >
-          <ul className="overflow-y-auto h-full p-4 space-y-4">
-            {sortedBarsToDisplay.length > 0 ? (
-              sortedBarsToDisplay.map(bar => {
-                const isSelected = activeBarId === bar.id;
-                const isLive = bar.live_table;
-                
-                // This logic ensures the red ring for live tables takes precedence when selected.
-                let ringClass = '';
-                if (isSelected) {
-                    ringClass = isLive ? 'ring-4 ring-red-500' : 'ring-4 ring-blue-500';
-                } else if (isLive) {
-                    ringClass = 'ring-2 ring-red-400';
-                }
-
-                return (
-                  <li
-                    key={bar.id}
-                    className={`bg-white border border-gray-200 rounded-lg shadow-sm p-4 hover:bg-gray-50 transition-all cursor-pointer ${ringClass}`}
-                    onClick={() => handleMarkerClick(bar)}
-                  >
-                    <div className="font-semibold">{bar.name}</div>
-                    {isLive && (
-                      <div className="text-red-600 font-bold text-xs flex items-center gap-1 mt-1">
-                        📍 Live table tonight @ 8:30p!
-                      </div>
-                    )}
-                    <div className="text-xs text-gray-500 my-2">{bar.address}</div>
-                    <div className="flex items-center text-xs text-gray-700 gap-3">
-                      <span className="flex items-center gap-1"><Table2 className="w-4 h-4" />{' '}{bar.num_tables ?? '?'} tables</span>
-                      {bar.guinness && <span className="flex items-center gap-1 text-green-700"><Beer className="w-4 h-4" /> Guinness</span>}
-                    </div>
-                  </li>
-                )
-              })
-            ) : (
-                <div className="text-center text-gray-500 p-8">
-                    <p>No bars match your current filters.</p>
-                </div>
-            )}
-          </ul>
-        </div>
-        <div ref={mapContainerRef} className="w-full h-screen" />
-      </>
-    );
-  };
-
   return (
-    <>
+    <div className="h-screen w-screen overflow-hidden flex flex-col">
       <style>{`
         .mapboxgl-popup-tip { display: none !important; }
         .mapboxgl-popup-content { padding: 0; background: transparent; box-shadow: none; }
       `}</style>
       
-      <div className="relative z-50">
         <Header
           headerRef={headerRef}
           filter={filter}
@@ -631,9 +551,75 @@ export default function HomePage() {
             <span>{showList ? 'Hide List' : 'Show List'}</span>
           </button>
         </Header>
-      </div>
 
-      {renderContent()}
+      <main className="flex-grow relative">
+        {isLoading ? (
+          <div className="absolute inset-0 bg-white/80 backdrop-blur-sm flex items-center justify-center z-[100]">
+            <div className="text-gray-700 text-2xl font-semibold animate-pulse">Racking 'em up...</div>
+          </div>
+        ) : initializationError ? (
+          <div className="absolute inset-0 bg-red-50 flex items-center justify-center z-[100] p-4">
+            <div className="text-center">
+              <h2 className="text-xl font-bold text-red-700 mb-2">Application Error</h2>
+              <p className="text-red-600">{initializationError}</p>
+              <p className="text-gray-500 mt-2">Please check that the required scripts are included in your HTML file and are not being blocked.</p>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div 
+              className={`fixed right-4 w-80 bg-white rounded-xl shadow-lg z-40 transform transition-transform duration-300 ${
+                showList ? 'translate-x-0' : 'translate-x-[calc(100%+1rem)]'
+              }`}
+              style={{
+                  top: headerHeight ? `${headerHeight + 16}px` : '10rem',
+                  height: headerHeight ? `calc(100vh - ${headerHeight + 32}px)` : 'calc(100vh - 12rem)'
+              }}
+            >
+              <ul className="overflow-y-auto h-full p-4 space-y-4">
+                {sortedBarsToDisplay.length > 0 ? (
+                  sortedBarsToDisplay.map(bar => {
+                    const isSelected = activeBarId === bar.id;
+                    const isLive = bar.live_table;
+                    
+                    let ringClass = '';
+                    if (isSelected) {
+                        ringClass = isLive ? 'ring-4 ring-red-500' : 'ring-4 ring-blue-500';
+                    } else if (isLive) {
+                        ringClass = 'ring-2 ring-red-400';
+                    }
+
+                    return (
+                      <li
+                        key={bar.id}
+                        className={`bg-white border border-gray-200 rounded-lg shadow-sm p-4 hover:bg-gray-50 transition-all cursor-pointer ${ringClass}`}
+                        onClick={() => handleMarkerClick(bar)}
+                      >
+                        <div className="font-semibold">{bar.name}</div>
+                        {isLive && (
+                          <div className="text-red-600 font-bold text-xs flex items-center gap-1 mt-1">
+                            📍 Live table tonight!
+                          </div>
+                        )}
+                        <div className="text-xs text-gray-500 my-2">{bar.address}</div>
+                        <div className="flex items-center text-xs text-gray-700 gap-3">
+                          <span className="flex items-center gap-1"><Table2 className="w-4 h-4" />{' '}{bar.num_tables ?? '?'} tables</span>
+                          {bar.guinness && <span className="flex items-center gap-1 text-green-700"><Beer className="w-4 h-4" /> Guinness</span>}
+                        </div>
+                      </li>
+                    )
+                  })
+                ) : (
+                    <div className="text-center text-gray-500 p-8">
+                        <p>No bars match your current filters.</p>
+                    </div>
+                )}
+              </ul>
+            </div>
+            <div ref={mapContainerRef} className="w-full h-full" />
+          </>
+        )}
+      </main>
 
       <a
         href="https://forms.gle/RgaPjc3eYhankmUg8"
@@ -643,6 +629,6 @@ export default function HomePage() {
       >
         + Register Bar
       </a>
-    </>
+    </div>
   )
 }
