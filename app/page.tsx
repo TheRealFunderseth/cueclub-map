@@ -265,9 +265,13 @@ export default function HomePage() {
     });
   }, [bars, filter, tableFilter, guinnessFilter, showFreePoolTonightOnly, liveTableOnly, today]);
 
-  // --- ROBUST INITIALIZATION EFFECT ---
+  // --- Data Fetching and Initialization Effect ---
   useEffect(() => {
-    const initializeApp = async () => {
+    if (window.innerWidth < 768) {
+        setShowList(false);
+    }
+    
+    const initializeData = async () => {
       try {
         const supabaseClient = createClient(
           process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -286,29 +290,6 @@ export default function HomePage() {
         (votesResponse.data as Vote[])?.forEach((r: Vote) => (voteCounts[r.bar_name] = r.count));
         setVotes(voteCounts);
 
-        if (mapContainerRef.current) {
-          mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN!;
-          const map = new mapboxgl.Map({
-            container: mapContainerRef.current,
-            style: 'mapbox://styles/mapbox/streets-v11',
-            center: [-122.431297, 37.773972],
-            zoom: 12,
-          });
-          mapRef.current = map;
-
-          popupRef.current = new mapboxgl.Popup({ 
-            closeButton: false, 
-            offset: 30,
-            anchor: 'bottom' 
-          });
-
-          map.addControl(new mapboxgl.GeolocateControl({
-            positionOptions: { enableHighAccuracy: true },
-            trackUserLocation: true,
-            showUserHeading: true
-          }));
-        }
-
       } catch (error: any) {
         console.error("Failed to initialize the application:", error);
         setInitializationError(error.message || "An unknown error occurred during startup.");
@@ -317,21 +298,47 @@ export default function HomePage() {
       }
     };
 
-    initializeApp();
+    initializeData();
+  }, []);
+
+  // --- Map Initialization Effect ---
+  useEffect(() => {
+    // This effect now runs only after data has loaded and the container is ready.
+    if (isLoading || initializationError || !mapContainerRef.current || mapRef.current) {
+        return;
+    }
+
+    mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN!;
+    const map = new mapboxgl.Map({
+        container: mapContainerRef.current,
+        style: 'mapbox://styles/mapbox/streets-v11',
+        center: [-122.431297, 37.773972],
+        zoom: 12,
+    });
+    mapRef.current = map;
+
+    popupRef.current = new mapboxgl.Popup({ 
+        closeButton: false, 
+        offset: 30,
+        anchor: 'bottom' 
+    });
+
+    map.addControl(new mapboxgl.GeolocateControl({
+        positionOptions: { enableHighAccuracy: true },
+        trackUserLocation: true,
+        showUserHeading: true
+    }));
 
     return () => {
-      if (mapRef.current) {
-        mapRef.current.remove();
-        mapRef.current = null;
-      }
+        if (mapRef.current) {
+            mapRef.current.remove();
+            mapRef.current = null;
+        }
     };
-  }, []);
+  }, [isLoading, initializationError]);
 
   // --- Layout Effect for Header Height ---
   useEffect(() => {
-    if (window.innerWidth < 768) {
-        setShowList(false);
-    }
     const updateHeaderHeight = () => {
         if (headerRef.current) {
             setHeaderHeight(headerRef.current.offsetHeight);
